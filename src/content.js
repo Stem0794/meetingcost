@@ -149,7 +149,42 @@
       .forEach((node) => node.remove());
   }
 
-  function buildBanner(totalText, knownCount, totalCount) {
+  /** Best-effort extraction of the event title for the email subject. */
+  function getMeetingTitle(container) {
+    const heading =
+      container.querySelector('[role="heading"]') ||
+      container.querySelector("h1, h2, h3");
+    if (heading) {
+      const text = heading.textContent.trim();
+      if (text) return text;
+    }
+    return "";
+  }
+
+  function buildEmailButton({ attendees, title, totalText }) {
+    const recipients = attendees.map((a) => a.email).join(",");
+    const subject = title ? `Re: ${title}` : "Re: our upcoming meeting";
+    const body =
+      `Hi,\n\nInstead of meeting` +
+      (title ? ` about "${title}"` : "") +
+      ` (estimated cost ${totalText}), could we sort this out over email?\n\n` +
+      `Here's where things stand:\n\n`;
+    const href =
+      `mailto:${encodeURIComponent(recipients)}` +
+      `?subject=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`;
+
+    const link = document.createElement("a");
+    link.className = "mc-email-btn";
+    link.href = href;
+    link.textContent = "Send an Email Instead";
+    // Open the user's mail client without navigating Calendar away.
+    link.target = "_blank";
+    link.rel = "noopener";
+    return link;
+  }
+
+  function buildBanner({ totalText, total, knownCount, totalCount, attendees, title }) {
     const banner = document.createElement("div");
     banner.className = "mc-injected mc-banner";
 
@@ -163,6 +198,13 @@
 
     banner.appendChild(icon);
     banner.appendChild(label);
+
+    // "Costs too much? Send an email instead." Shown when the meeting cost
+    // reaches the configured threshold (0 = always show, matching the mockup).
+    const threshold = cache.settings.emailThreshold || 0;
+    if (attendees.length && total >= threshold) {
+      banner.appendChild(buildEmailButton({ attendees, title, totalText }));
+    }
 
     if (knownCount < totalCount) {
       const note = document.createElement("span");
@@ -216,11 +258,14 @@
     if (durationHours == null || knownCount === 0) return;
 
     const total = sumRates * durationHours;
-    const banner = buildBanner(
-      MC.formatMoney(total, cache.settings),
+    const banner = buildBanner({
+      totalText: MC.formatMoney(total, cache.settings),
+      total,
       knownCount,
-      attendees.length
-    );
+      totalCount: attendees.length,
+      attendees,
+      title: getMeetingTitle(container),
+    });
 
     // Insert just above the attendee list when we can find it, otherwise drop
     // the banner at the top of the popup.

@@ -19,6 +19,9 @@ Rates can be entered manually or pulled automatically from
 
 - **Inline cost banner** injected into the Google Calendar event detail popup.
 - **Per‑attendee hourly rate** shown next to each guest.
+- **"Send an Email Instead" button** — a one‑click nudge that opens a pre‑filled
+  email to all attendees. Optionally show it only once a meeting crosses a cost
+  threshold ("costs too much? send an email instead").
 - **Settings page** to manage rates per colleague (by email), currency, and a
   fallback default rate.
 - **Everhour sync** — enter your API key and import the whole team's rates

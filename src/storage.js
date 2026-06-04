@@ -12,6 +12,7 @@
  *       currency: string,            // e.g. "$"
  *       currencyPosition: "before" | "after",
  *       defaultRate: number,         // used for attendees without a known rate (0 = ignore)
+ *       emailThreshold: number,      // show "Send an Email Instead" at/above this cost (0 = always)
  *       everhourApiKey: string,
  *       everhourRateType: "cost" | "rate",  // which Everhour field to use
  *       lastSync: number | null      // epoch ms of last Everhour sync
@@ -29,6 +30,7 @@
     currency: "$",
     currencyPosition: "before",
     defaultRate: 0,
+    emailThreshold: 0,
     everhourApiKey: "",
     everhourRateType: "cost",
     lastSync: null,

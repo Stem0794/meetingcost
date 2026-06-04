@@ -9,6 +9,7 @@
     currency: $("currency"),
     currencyPosition: $("currencyPosition"),
     defaultRate: $("defaultRate"),
+    emailThreshold: $("emailThreshold"),
     everhourApiKey: $("everhourApiKey"),
     everhourRateType: $("everhourRateType"),
     syncEverhour: $("syncEverhour"),
@@ -163,6 +164,7 @@
     els.currency.value = settings.currency;
     els.currencyPosition.value = settings.currencyPosition;
     els.defaultRate.value = settings.defaultRate || "";
+    els.emailThreshold.value = settings.emailThreshold || "";
     els.everhourApiKey.value = settings.everhourApiKey || "";
     els.everhourRateType.value = settings.everhourRateType || "cost";
     renderRates(rates);
@@ -179,6 +181,7 @@
       currency: els.currency.value.trim() || "$",
       currencyPosition: els.currencyPosition.value,
       defaultRate: parseFloat(els.defaultRate.value) || 0,
+      emailThreshold: parseFloat(els.emailThreshold.value) || 0,
       everhourApiKey: els.everhourApiKey.value.trim(),
       everhourRateType: els.everhourRateType.value,
     };
