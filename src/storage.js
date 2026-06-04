@@ -32,7 +32,7 @@
     defaultRate: 0,
     emailThreshold: 0,
     everhourApiKey: "",
-    everhourRateType: "cost",
+    everhourRateType: "rate",
     lastSync: null,
   };
 

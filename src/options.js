@@ -130,6 +130,7 @@
 
   function mergeEverhourUsers(users) {
     const field = els.everhourRateType.value; // "cost" | "rate"
+    const fieldLabel = field === "cost" ? "cost" : "bill";
     const existing = readRatesFromTable();
     let applied = 0;
     let missing = 0;
@@ -151,7 +152,7 @@
 
     renderRates(existing);
     let msg = `Synced ${applied} ${applied === 1 ? "person" : "people"} from Everhour.`;
-    if (missing) msg += ` ${missing} had no ${field} rate set.`;
+    if (missing) msg += ` ${missing} had no ${fieldLabel} rate set in Everhour.`;
     msg += " Remember to Save.";
     setStatus(els.everhourStatus, msg, "ok");
   }
@@ -166,7 +167,7 @@
     els.defaultRate.value = settings.defaultRate || "";
     els.emailThreshold.value = settings.emailThreshold || "";
     els.everhourApiKey.value = settings.everhourApiKey || "";
-    els.everhourRateType.value = settings.everhourRateType || "cost";
+    els.everhourRateType.value = settings.everhourRateType || "rate";
     renderRates(rates);
 
     if (settings.lastSync) {
