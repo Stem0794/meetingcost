@@ -173,16 +173,6 @@
     return attendees;
   }
 
-  /* ------------------------------------------------------------------ */
-  /* Rendering                                                           */
-  /* ------------------------------------------------------------------ */
-
-  function clearInjected(container) {
-    container
-      .querySelectorAll(".mc-injected")
-      .forEach((node) => node.remove());
-  }
-
   /** Best-effort extraction of the event title for the email subject. */
   function getMeetingTitle(container) {
     const heading =
@@ -195,133 +185,280 @@
     return "";
   }
 
-  function buildEmailButton({ attendees, title, totalText }) {
+  /* ------------------------------------------------------------------ */
+  /* Localization                                                        */
+  /* ------------------------------------------------------------------ */
+
+  const isFrench = (document.documentElement.lang || "")
+    .toLowerCase()
+    .startsWith("fr");
+
+  const L = isFrench
+    ? {
+        cost: "coût de la réunion",
+        perHour: "/ h",
+        email: "Envoyer un e-mail à la place",
+        noRates: "Aucun tarif défini — ouvrez les réglages de l'extension",
+        ratesKnown: (k, t) => `${k}/${t} tarifs connus`,
+        unknown: "tarif inconnu",
+        more: (n) => `+ ${n} autre${n > 1 ? "s" : ""}`,
+        emailSubject: (title) => (title ? `Re : ${title}` : "Re : notre réunion"),
+        emailBody: (title, totalText) =>
+          `Bonjour,\n\nPlutôt qu'une réunion` +
+          (title ? ` au sujet de « ${title} »` : "") +
+          ` (coût estimé ${totalText}), pourrions-nous régler cela par e-mail ?\n\n`,
+      }
+    : {
+        cost: "cost of meeting",
+        perHour: "/ hr",
+        email: "Send an Email Instead",
+        noRates: "No rates set — open the extension settings",
+        ratesKnown: (k, t) => `${k}/${t} rates known`,
+        unknown: "rate unknown",
+        more: (n) => `+ ${n} more`,
+        emailSubject: (title) => (title ? `Re: ${title}` : "Re: our meeting"),
+        emailBody: (title, totalText) =>
+          `Hi,\n\nInstead of meeting` +
+          (title ? ` about "${title}"` : "") +
+          ` (estimated cost ${totalText}), could we sort this out over email?\n\n`,
+      };
+
+  /* ------------------------------------------------------------------ */
+  /* Overlay rendering                                                   */
+  /*                                                                     */
+  /* Google Calendar runs a virtual-DOM reconciler that deletes any      */
+  /* foreign node inserted into its managed subtree. To survive that we  */
+  /* never touch Google's DOM: we render our own card in a Shadow DOM    */
+  /* attached to <html>, and position it next to the event popup.        */
+  /* ------------------------------------------------------------------ */
+
+  const MAX_LISTED_ATTENDEES = 12;
+  let host = null;
+  let card = null;
+  let anchor = null; // the popup container the card is currently pinned to
+
+  const CARD_STYLES = `
+    :host { all: initial; }
+    .card {
+      font-family: "Google Sans", Roboto, Arial, sans-serif;
+      width: 250px;
+      background: #fff;
+      border: 1px solid #dadce0;
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(60,64,67,0.25);
+      padding: 14px 16px;
+      color: #202124;
+      box-sizing: border-box;
+    }
+    .total { display: flex; align-items: baseline; gap: 8px; }
+    .amount { font-size: 18px; font-weight: 700; color: #d93025; }
+    .label { font-size: 13px; color: #5f6368; }
+    .note { margin-top: 2px; font-size: 11px; color: #80868b; }
+    .people { margin: 10px 0 0; padding: 0; list-style: none;
+              border-top: 1px solid #f1f3f4; }
+    .people li { display: flex; justify-content: space-between; gap: 10px;
+                 font-size: 12px; padding: 5px 0; border-bottom: 1px solid #f1f3f4; }
+    .people li:last-child { border-bottom: none; }
+    .pname { color: #3c4043; overflow: hidden; text-overflow: ellipsis;
+             white-space: nowrap; }
+    .prate { color: #5f6368; white-space: nowrap; }
+    .prate.missing { color: #c5221f; }
+    .empty { font-size: 12px; color: #5f6368; }
+    .email-btn {
+      display: inline-block; margin-top: 12px; padding: 7px 14px;
+      background: #1a73e8; color: #fff; font-size: 13px; font-weight: 600;
+      border-radius: 8px; text-decoration: none; cursor: pointer;
+    }
+    .email-btn:hover { background: #1765cc; }
+  `;
+
+  function ensureHost() {
+    if (host && host.isConnected) return;
+    host = document.createElement("div");
+    host.id = "mc-cost-host";
+    host.style.cssText =
+      "position:fixed;top:0;left:0;z-index:2147483647;display:none;";
+    const shadow = host.attachShadow({ mode: "open" });
+    const style = document.createElement("style");
+    style.textContent = CARD_STYLES;
+    card = document.createElement("div");
+    card.className = "card";
+    shadow.appendChild(style);
+    shadow.appendChild(card);
+    // Attach to <html>, outside Google's reconciled <body> subtree.
+    document.documentElement.appendChild(host);
+  }
+
+  function hideCard() {
+    anchor = null;
+    if (host) host.style.display = "none";
+  }
+
+  function mailtoHref(attendees, title, totalText) {
     const recipients = attendees.map((a) => a.email).join(",");
-    const subject = title ? `Re: ${title}` : "Re: our upcoming meeting";
-    const body =
-      `Hi,\n\nInstead of meeting` +
-      (title ? ` about "${title}"` : "") +
-      ` (estimated cost ${totalText}), could we sort this out over email?\n\n` +
-      `Here's where things stand:\n\n`;
-    const href =
+    return (
       `mailto:${encodeURIComponent(recipients)}` +
-      `?subject=${encodeURIComponent(subject)}` +
-      `&body=${encodeURIComponent(body)}`;
-
-    const link = document.createElement("a");
-    link.className = "mc-email-btn";
-    link.href = href;
-    link.textContent = "Send an Email Instead";
-    // Open the user's mail client without navigating Calendar away.
-    link.target = "_blank";
-    link.rel = "noopener";
-    return link;
+      `?subject=${encodeURIComponent(L.emailSubject(title))}` +
+      `&body=${encodeURIComponent(L.emailBody(title, totalText))}`
+    );
   }
 
-  function buildBanner({ totalText, total, knownCount, totalCount, attendees, title }) {
-    const banner = document.createElement("div");
-    banner.className = "mc-injected mc-banner";
+  function renderCard(data) {
+    ensureHost();
+    card.textContent = "";
 
-    const icon = document.createElement("span");
-    icon.className = "mc-banner-icon";
-    icon.textContent = "$";
+    if (data.knownCount === 0) {
+      const empty = document.createElement("div");
+      empty.className = "empty";
+      empty.textContent = L.noRates;
+      card.appendChild(empty);
+    } else {
+      const total = document.createElement("div");
+      total.className = "total";
+      const amount = document.createElement("span");
+      amount.className = "amount";
+      amount.textContent = data.totalText;
+      const label = document.createElement("span");
+      label.className = "label";
+      label.textContent = L.cost;
+      total.appendChild(amount);
+      total.appendChild(label);
+      card.appendChild(total);
 
-    const label = document.createElement("span");
-    label.className = "mc-banner-label";
-    label.textContent = `${totalText} cost of meeting`;
-
-    banner.appendChild(icon);
-    banner.appendChild(label);
-
-    // "Costs too much? Send an email instead." Shown when the meeting cost
-    // reaches the configured threshold (0 = always show, matching the mockup).
-    const threshold = cache.settings.emailThreshold || 0;
-    if (attendees.length && total >= threshold) {
-      banner.appendChild(buildEmailButton({ attendees, title, totalText }));
-    }
-
-    if (knownCount < totalCount) {
-      const note = document.createElement("span");
-      note.className = "mc-banner-note";
-      note.textContent = `(${knownCount}/${totalCount} rates known)`;
-      note.title =
-        "Some attendees don't have an hourly rate yet. Add them in the " +
-        "extension options or set a default rate.";
-      banner.appendChild(note);
-    }
-    return banner;
-  }
-
-  function annotateAttendee(attendee, rate) {
-    const { row } = attendee;
-    if (!row || row.querySelector(".mc-rate")) return;
-    const span = document.createElement("span");
-    span.className = "mc-injected mc-rate";
-    span.textContent = ` (${MC.formatRate(rate, cache.settings)} per hour)`;
-    row.appendChild(span);
-  }
-
-  function process(container) {
-    const durationHours = parseDurationHours(container.textContent);
-    const attendees = collectAttendees(container);
-    if (attendees.length === 0) return;
-
-    // Signature avoids re-rendering identical state on every mutation, but lets
-    // us refresh when attendees, duration, or settings/rates change.
-    const signature = JSON.stringify({
-      d: durationHours,
-      a: attendees.map((x) => x.email).sort(),
-      v: cache.version,
-    });
-    if (container.dataset.mcSig === signature) return;
-    container.dataset.mcSig = signature;
-
-    clearInjected(container);
-
-    let sumRates = 0;
-    let knownCount = 0;
-    for (const attendee of attendees) {
-      const rate = MC.resolveRate(cache.rates, cache.settings, attendee);
-      if (rate != null) {
-        sumRates += rate;
-        knownCount += 1;
-        annotateAttendee(attendee, rate);
+      if (data.knownCount < data.attendees.length) {
+        const note = document.createElement("div");
+        note.className = "note";
+        note.textContent = L.ratesKnown(data.knownCount, data.attendees.length);
+        card.appendChild(note);
       }
     }
 
-    if (durationHours == null || knownCount === 0) return;
-
-    const total = sumRates * durationHours;
-    const banner = buildBanner({
-      totalText: MC.formatMoney(total, cache.settings),
-      total,
-      knownCount,
-      totalCount: attendees.length,
-      attendees,
-      title: getMeetingTitle(container),
-    });
-
-    // Insert just above the attendee list when we can find it, otherwise drop
-    // the banner at the top of the popup.
-    const firstRow = attendees[0].row;
-    const list =
-      (firstRow && firstRow.closest('ul, [role="list"]')) || firstRow;
-    if (list && list.parentElement) {
-      list.parentElement.insertBefore(banner, list);
-    } else {
-      container.insertBefore(banner, container.firstChild);
+    // Per-attendee breakdown.
+    const list = document.createElement("ul");
+    list.className = "people";
+    const shown = data.attendees.slice(0, MAX_LISTED_ATTENDEES);
+    for (const a of shown) {
+      const li = document.createElement("li");
+      const name = document.createElement("span");
+      name.className = "pname";
+      name.textContent = a.name || a.email;
+      const rate = document.createElement("span");
+      rate.className = "prate" + (a.rate == null ? " missing" : "");
+      rate.textContent =
+        a.rate == null
+          ? L.unknown
+          : `${MC.formatRate(a.rate, cache.settings)} ${L.perHour}`;
+      li.appendChild(name);
+      li.appendChild(rate);
+      list.appendChild(li);
     }
+    if (data.attendees.length > shown.length) {
+      const li = document.createElement("li");
+      li.className = "pname";
+      li.textContent = L.more(data.attendees.length - shown.length);
+      list.appendChild(li);
+    }
+    card.appendChild(list);
+
+    // "Costs too much? Send an email instead."
+    const threshold = cache.settings.emailThreshold || 0;
+    if (data.knownCount > 0 && data.total >= threshold) {
+      const btn = document.createElement("a");
+      btn.className = "email-btn";
+      btn.href = mailtoHref(data.attendees, data.title, data.totalText);
+      btn.target = "_blank";
+      btn.rel = "noopener";
+      btn.textContent = L.email;
+      card.appendChild(btn);
+    }
+
+    host.style.display = "block";
+  }
+
+  /** Pin the card just outside the popup (to the right, or left if no room). */
+  function positionCard() {
+    if (!host || !anchor || !anchor.isConnected) {
+      hideCard();
+      return;
+    }
+    const r = anchor.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) {
+      hideCard();
+      return;
+    }
+    const margin = 8;
+    const w = host.offsetWidth;
+    const h = host.offsetHeight;
+    let left = r.right + margin;
+    if (left + w > window.innerWidth - margin) left = r.left - w - margin;
+    if (left < margin) left = margin;
+    let top = r.top;
+    if (top + h > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - h - margin);
+    }
+    host.style.left = `${Math.round(left)}px`;
+    host.style.top = `${Math.round(top)}px`;
   }
 
   /* ------------------------------------------------------------------ */
-  /* Scheduling                                                          */
+  /* Processing                                                          */
   /* ------------------------------------------------------------------ */
+
+  function buildData(container) {
+    const durationHours = parseDurationHours(container.textContent);
+    if (durationHours == null) return null;
+    const rawAttendees = collectAttendees(container);
+    if (rawAttendees.length === 0) return null;
+
+    let sumRates = 0;
+    let knownCount = 0;
+    const attendees = rawAttendees.map((a) => {
+      const rate = MC.resolveRate(cache.rates, cache.settings, a);
+      if (rate != null) {
+        sumRates += rate;
+        knownCount += 1;
+      }
+      return { name: a.name, email: a.email, rate };
+    });
+    // Known rates first, so the visible (capped) list is the useful one.
+    attendees.sort((x, y) => (x.rate == null ? 1 : 0) - (y.rate == null ? 1 : 0));
+
+    const total = sumRates * durationHours;
+    return {
+      container,
+      durationHours,
+      attendees,
+      knownCount,
+      total,
+      totalText: MC.formatMoney(total, cache.settings),
+      title: getMeetingTitle(container),
+    };
+  }
 
   function run() {
     scheduled = false;
-    if (!cache.settings.enabled) return;
+    if (!cache.settings.enabled) {
+      hideCard();
+      return;
+    }
     try {
-      findPopups().forEach(process);
+      const candidates = findPopups()
+        .map(buildData)
+        .filter(Boolean)
+        // Prefer the tightest (most specific) container.
+        .sort(
+          (a, b) =>
+            a.container.textContent.length - b.container.textContent.length
+        );
+
+      const best = candidates[0];
+      if (!best) {
+        hideCard();
+        return;
+      }
+      anchor = best.container;
+      renderCard(best);
+      positionCard();
     } catch (err) {
       // Never let a parsing hiccup break the page.
       console.debug("[MeetingCost] processing error", err);
@@ -340,7 +477,6 @@
     cache = {
       settings: data.settings,
       rates: data.rates,
-      // bump a version token so process() knows to re-render on changes
       version: (cache.version || 0) + 1,
     };
   }
@@ -351,14 +487,14 @@
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });
 
+    // Keep the card pinned to the popup as the user scrolls or resizes.
+    window.addEventListener("scroll", positionCard, true);
+    window.addEventListener("resize", positionCard);
+
     chrome.storage.onChanged.addListener(async (changes, area) => {
       if (area !== "local") return;
       if (!changes.settings && !changes.rates) return;
       await refreshCache();
-      // Force re-render of any open popups.
-      document
-        .querySelectorAll("[data-mc-sig]")
-        .forEach((el) => delete el.dataset.mcSig);
       schedule();
     });
 

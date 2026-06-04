@@ -17,8 +17,11 @@ Rates can be entered manually or pulled automatically from
 
 ## Features
 
-- **Inline cost banner** injected into the Google Calendar event detail popup.
-- **Per‑attendee hourly rate** shown next to each guest.
+- **Floating cost card** pinned next to the Google Calendar event popup, showing
+  the total cost plus a per‑attendee hourly‑rate breakdown. It's rendered in an
+  isolated Shadow DOM attached to `<html>` so Google's view reconciler can't
+  delete it (the reason an injected inline banner doesn't survive).
+- **Localized** — English and French (`coût de la réunion`).
 - **"Send an Email Instead" button** — a one‑click nudge that opens a pre‑filled
   email to all attendees. Optionally show it only once a meeting crosses a cost
   threshold ("costs too much? send an email instead").
@@ -67,8 +70,7 @@ currency automatically.
 
 | Piece | File | Responsibility |
 | ----- | ---- | -------------- |
-| Content script | `src/content.js` | Detects event popups, parses duration + attendees, injects the cost. |
-| Styles | `src/content.css` | Styling for the injected banner / annotations. |
+| Content script | `src/content.js` | Detects event popups, parses duration + attendees, renders the floating cost card. |
 | Background worker | `src/background.js` | Talks to the Everhour API (`/team/users`). |
 | Options page | `src/options.*` | Settings + rates table + Everhour sync UI. |
 | Toolbar popup | `src/popup.*` | Enable/disable toggle and summary. |
@@ -76,12 +78,20 @@ currency automatically.
 
 ### A note on Google Calendar's DOM
 
-Google Calendar's markup is obfuscated and changes periodically. Rather than
-relying on brittle CSS class names, the content script finds attendees via their
-`data-email` attributes and locates the popup by climbing to the nearest
-ancestor whose text contains a time range (see `TIME_RANGE_RE` in
-`src/content.js`). If a future Google update breaks detection, that regex and
-the `data-email` selector are the first things to revisit.
+Google Calendar's markup is obfuscated, changes periodically, and — crucially —
+is managed by a virtual‑DOM reconciler that **deletes any foreign node** inserted
+into it. So the extension never writes into Google's DOM. Instead it:
+
+1. Finds attendees by their email attributes (`data-email`, or `data-hovercard-id`
+   in the event editor) and locates the popup by climbing to the nearest ancestor
+   whose text contains a time range (see `TIME_RANGE_RE` in `src/content.js`).
+2. Parses the duration, supporting 12‑hour (`11:00am – 12:00pm`), 24‑hour
+   (`16:15 – 16:45`), and French (`16h15 à 16h45`) formats.
+3. Renders its own card in a Shadow DOM attached to `<html>` and pins it next to
+   the popup — outside Google's reconciled subtree, so it sticks.
+
+If a future Google update breaks detection, the `TIME_RANGE_RE` regex and the
+email selectors are the first things to revisit.
 
 ## Privacy
 
