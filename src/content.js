@@ -14,14 +14,31 @@
 (function () {
   "use strict";
 
-  // Matches a time range such as "11:00am – 12:00pm", "11 – 11:30am",
-  // "1:00 PM to 2:30 PM". The dash may be a hyphen, en/em dash, or "to".
-  const TIME_RANGE_RE =
-    /(\d{1,2}(?::\d{2})?\s*(?:am|pm)?)\s*(?:–|—|-|to|until)\s*(\d{1,2}(?::\d{2})?\s*(?:[ap]m))/i;
+  // A single clock time. To avoid matching stray numbers (dates, phone numbers)
+  // we require either a ":"/"h" minutes separator or an am/pm marker. Supports:
+  //   12-hour:  "11am", "1:30 PM"
+  //   24-hour:  "16:15"            (French / most of the world)
+  //   French h: "16h15", "16h"
+  const TIME_TOKEN =
+    "\\d{1,2}\\s?h\\s?\\d{2}|\\d{1,2}\\s?h|\\d{1,2}:\\d{2}(?:\\s?[ap]m)?|\\d{1,2}\\s?[ap]m";
+
+  // The start time may be a bare hour ("11 – 11:30am"): Google drops ":00" in
+  // 12-hour locales and lets the end time carry the am/pm. We only allow this on
+  // the left; the end token must still have a real indicator so that plain
+  // number ranges ("5 – 6") never match.
+  const START_TOKEN = `${TIME_TOKEN}|\\d{1,2}`;
+
+  // Matches a time range, e.g. "11:00am – 12:00pm", "16:15 – 16:45",
+  // "16h15 à 16h45". Separator may be a hyphen, en/em dash, "to"/"until"/"à".
+  const TIME_RANGE_RE = new RegExp(
+    `(${START_TOKEN})\\s*(?:–|—|-|to|until|à)\\s*(${TIME_TOKEN})`,
+    "i"
+  );
 
   // Cap how large a "popup" container can be, so we never mistake the whole
-  // week/day grid (which also contains times + emails) for an event popup.
-  const MAX_CONTAINER_TEXT = 5000;
+  // week/day grid (which also contains times) for an event popup. The event
+  // editor is fairly text-heavy, so this is generous.
+  const MAX_CONTAINER_TEXT = 8000;
   const MAX_CLIMB = 16;
 
   let cache = { settings: MC.DEFAULT_SETTINGS, rates: {} };
@@ -32,7 +49,12 @@
   /* ------------------------------------------------------------------ */
 
   function toMinutes(token, fallbackMeridiem) {
-    const m = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(token);
+    // Normalize the French "16h15" / "16h" forms to "16:15" / "16:00".
+    const normalized = token
+      .toLowerCase()
+      .replace(/(\d)\s*h\s*(\d{2})/, "$1:$2")
+      .replace(/(\d)\s*h(?!\d)/, "$1:00");
+    const m = /(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i.exec(normalized);
     if (!m) return null;
     let hours = parseInt(m[1], 10);
     const mins = m[2] ? parseInt(m[2], 10) : 0;
@@ -47,8 +69,9 @@
     const m = TIME_RANGE_RE.exec(text.replace(/ /g, " "));
     if (!m) return null;
 
-    // The right side always carries an am/pm marker; parse it first, then use
-    // its meridiem as the fallback for the (possibly bare) left side.
+    // In 12-hour locales the end time carries the am/pm marker, so parse it
+    // first and use its meridiem as the fallback for the (possibly bare) start
+    // time. In 24-hour locales there is no meridiem and this is a no-op.
     const right = toMinutes(m[2]);
     const left = toMinutes(m[1], right ? right.meridiem : null);
     if (!left || !right) return null;
@@ -69,6 +92,17 @@
   /* DOM discovery                                                       */
   /* ------------------------------------------------------------------ */
 
+  // Google renders attendees with an email either in `data-email` (read-only
+  // event popup) or in `data-hovercard-id` (the event editor's guest chips).
+  const ATTENDEE_SELECTOR = "[data-email], [data-hovercard-id]";
+
+  function emailOf(el) {
+    const raw =
+      el.getAttribute("data-email") || el.getAttribute("data-hovercard-id") || "";
+    const email = raw.trim().toLowerCase();
+    return email.includes("@") ? email : "";
+  }
+
   function isVisible(el) {
     if (!el) return false;
     const rect = el.getBoundingClientRect();
@@ -76,15 +110,15 @@
   }
 
   /**
-   * Find event popup containers currently on screen. Strategy: every attendee
-   * is rendered with a `data-email` attribute; for each one we climb up to the
-   * nearest ancestor whose text contains a time range — that ancestor is the
-   * event popup. Containers are de-duplicated.
+   * Find event popup/editor containers currently on screen. Strategy: every
+   * attendee is rendered with an email-bearing attribute; for each one we climb
+   * up to the nearest ancestor whose text contains a time range — that ancestor
+   * is the event popup or editor. Containers are de-duplicated.
    */
   function findPopups() {
     const emailEls = Array.from(
-      document.querySelectorAll("[data-email]")
-    ).filter(isVisible);
+      document.querySelectorAll(ATTENDEE_SELECTOR)
+    ).filter((el) => emailOf(el) && isVisible(el));
 
     const containers = new Set();
     for (const el of emailEls) {
@@ -128,9 +162,9 @@
   function collectAttendees(container) {
     const seen = new Set();
     const attendees = [];
-    container.querySelectorAll("[data-email]").forEach((el) => {
-      const email = (el.getAttribute("data-email") || "").trim().toLowerCase();
-      if (!email || !email.includes("@") || seen.has(email)) return;
+    container.querySelectorAll(ATTENDEE_SELECTOR).forEach((el) => {
+      const email = emailOf(el);
+      if (!email || seen.has(email)) return;
       seen.add(email);
       const row =
         el.closest('[role="listitem"]') || el.parentElement || el;
