@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Meeting Cost — Settings</title>
+    <link rel="stylesheet" href="options.css" />
+  </head>
+  <body>
+    <main class="wrap">
+      <header class="header">
+        <span class="logo">$</span>
+        <div>
+          <h1>Meeting Cost</h1>
+          <p class="subtitle">
+            Show the cost of a meeting on Google Calendar from your
+            colleagues' hourly rates.
+          </p>
+        </div>
+      </header>
+
+      <section class="card">
+        <h2>General</h2>
+        <label class="row">
+          <input type="checkbox" id="enabled" />
+          <span>Show meeting costs on Google Calendar</span>
+        </label>
+
+        <div class="grid">
+          <label class="field">
+            <span>Currency symbol</span>
+            <input type="text" id="currency" maxlength="3" placeholder="$" />
+          </label>
+          <label class="field">
+            <span>Symbol position</span>
+            <select id="currencyPosition">
+              <option value="before">Before amount ($100)</option>
+              <option value="after">After amount (100€)</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Default rate / hour</span>
+            <input type="number" id="defaultRate" min="0" step="0.01" placeholder="0" />
+            <small>Used for attendees with no specific rate. Leave 0 to skip them.</small>
+          </label>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Everhour</h2>
+        <p class="muted">
+          Pull hourly rates for your team automatically. Find your API key in
+          Everhour under <em>My Profile → API &amp; Integrations</em>.
+        </p>
+        <div class="grid">
+          <label class="field span2">
+            <span>Everhour API key</span>
+            <input type="password" id="everhourApiKey" placeholder="xxxx-xxxx-xxxx-xxxx" autocomplete="off" />
+          </label>
+          <label class="field">
+            <span>Rate to use</span>
+            <select id="everhourRateType">
+              <option value="cost">Cost rate</option>
+              <option value="rate">Bill rate</option>
+            </select>
+            <small>Which Everhour field maps to "per hour".</small>
+          </label>
+        </div>
+        <div class="actions">
+          <button type="button" id="syncEverhour" class="btn primary">Sync from Everhour</button>
+          <span id="everhourStatus" class="status"></span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <h2>Hourly rates</h2>
+          <div class="actions">
+            <button type="button" id="addRow" class="btn">Add person</button>
+          </div>
+        </div>
+        <table class="rates" id="ratesTable">
+          <thead>
+            <tr>
+              <th>Email</th>
+              <th>Name</th>
+              <th>Rate / hour</th>
+              <th>Source</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="ratesBody"></tbody>
+        </table>
+        <p class="muted empty" id="ratesEmpty">
+          No rates yet. Add a person manually or sync from Everhour.
+        </p>
+      </section>
+
+      <footer class="footer">
+        <button type="button" id="save" class="btn primary large">Save settings</button>
+        <span id="saveStatus" class="status"></span>
+      </footer>
+    </main>
+
+    <script src="storage.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

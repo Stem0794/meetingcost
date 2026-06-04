@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Meeting Cost</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="pop">
+      <div class="pop-head">
+        <span class="logo">$</span>
+        <strong>Meeting Cost</strong>
+      </div>
+
+      <label class="toggle">
+        <input type="checkbox" id="enabled" />
+        <span>Show costs on Google Calendar</span>
+      </label>
+
+      <p class="summary" id="summary">No rates configured yet.</p>
+
+      <button type="button" id="openOptions" class="btn primary">Open settings</button>
+    </div>
+
+    <script src="storage.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>
