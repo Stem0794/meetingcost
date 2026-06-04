@@ -159,6 +159,15 @@
     return "";
   }
 
+  // Meeting rooms / resources are not people. Their addresses live under
+  // *.calendar.google.com (resource & group calendars), and in the editor they
+  // show up labelled "Salle disponible :" / "Room available:".
+  function isResource(email, name) {
+    if (/calendar\.google\.com$/i.test(email)) return true;
+    const n = (name || "").trim().toLowerCase();
+    return /^(salle disponible|room available|available room)\b/.test(n);
+  }
+
   function collectAttendees(container) {
     const seen = new Set();
     const attendees = [];
@@ -168,7 +177,9 @@
       seen.add(email);
       const row =
         el.closest('[role="listitem"]') || el.parentElement || el;
-      attendees.push({ email, name: guessName(el, row, email), row });
+      const name = guessName(el, row, email);
+      if (isResource(email, name)) return; // skip meeting rooms / resources
+      attendees.push({ email, name, row });
     });
     return attendees;
   }
