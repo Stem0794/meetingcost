@@ -109,17 +109,15 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
 });
 
 /**
- * Open a Gmail compose window. If a Gmail tab already exists in the current
- * window, focus it and navigate it to the compose URL. Otherwise open a new tab.
+ * Open a Gmail compose pop-out as a small standalone window, using the user's
+ * logged-in Gmail session. We deliberately do NOT navigate an existing inbox
+ * tab — that would replace the inbox with a full-screen compose page.
  */
 async function openGmailCompose(composeUrl) {
-  const tabs = await chrome.tabs.query({ url: "https://mail.google.com/*" });
-  if (tabs.length > 0) {
-    // Prefer a tab in the same window; fall back to any Gmail tab.
-    const senderTab = tabs[0];
-    await chrome.tabs.update(senderTab.id, { active: true, url: composeUrl });
-    await chrome.windows.update(senderTab.windowId, { focused: true });
-  } else {
-    await chrome.tabs.create({ url: composeUrl });
-  }
+  await chrome.windows.create({
+    url: composeUrl,
+    type: "popup",
+    width: 680,
+    height: 700,
+  });
 }
