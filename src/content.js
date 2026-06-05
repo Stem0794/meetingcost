@@ -434,7 +434,7 @@
         sumRates += rate;
         knownCount += 1;
       }
-      return { name: a.name, email: a.email, rate };
+      return { name: a.name, email: a.email, rate, row: a.row };
     });
     // Known rates first, so the visible (capped) list is the useful one.
     attendees.sort((x, y) => (x.rate == null ? 1 : 0) - (y.rate == null ? 1 : 0));
@@ -451,9 +451,145 @@
     };
   }
 
+  /* ------------------------------------------------------------------ */
+  /* Inline injection (primary)                                          */
+  /*                                                                     */
+  /* We insert a native-looking cost row + per-attendee annotations      */
+  /* directly into Google's popup. Google's reconciler may strip them on */
+  /* a re-render; our MutationObserver simply re-injects (no stale guard).*/
+  /* If Google removes them faster than we can keep up (thrash), we back  */
+  /* off and fall back to the floating overlay card for a while.         */
+  /* ------------------------------------------------------------------ */
+
+  const THRASH_WINDOW_MS = 2000;
+  const THRASH_LIMIT = 8; // re-inserts within the window before giving up
+  const THRASH_COOLDOWN_MS = 30000;
+  let injectTimes = [];
+  let inlineDisabledUntil = 0;
+
+  function inlineBannerLabel(data) {
+    return data.knownCount === 0
+      ? L.noRates
+      : `${data.totalText} ${L.cost}` +
+          (data.knownCount < data.attendees.length
+            ? `  ·  ${L.ratesKnown(data.knownCount, data.attendees.length)}`
+            : "");
+  }
+
+  function buildInlineBanner(data) {
+    const wrap = document.createElement("div");
+    wrap.setAttribute("data-mc-banner", "1");
+    wrap.style.cssText =
+      "display:flex;align-items:center;gap:10px;margin:6px 0;padding:4px 24px;" +
+      "font-family:inherit;";
+
+    const icon = document.createElement("span");
+    icon.textContent = cache.settings.currency || "€";
+    icon.style.cssText =
+      "flex:0 0 auto;width:18px;text-align:center;font-weight:700;color:#5f6368;";
+
+    const label = document.createElement("span");
+    label.setAttribute("data-mc-label", "1");
+    label.style.cssText =
+      "font-weight:700;font-size:14px;color:" +
+      (data.knownCount === 0 ? "#5f6368" : "#d93025") +
+      ";";
+    label.textContent = inlineBannerLabel(data);
+
+    wrap.appendChild(icon);
+    wrap.appendChild(label);
+
+    const threshold = cache.settings.emailThreshold || 0;
+    if (data.knownCount > 0 && data.total >= threshold) {
+      const composeUrl = gmailComposeUrl(
+        data.attendees,
+        data.title,
+        data.totalText
+      );
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("data-mc-email", "1");
+      btn.textContent = L.email;
+      btn.style.cssText =
+        "margin-left:auto;padding:6px 14px;background:#1a73e8;color:#fff;" +
+        "border:none;border-radius:8px;font-size:13px;font-weight:600;" +
+        "font-family:inherit;cursor:pointer;";
+      btn.addEventListener("click", () => {
+        chrome.runtime.sendMessage({ type: "gmail:compose", url: composeUrl });
+      });
+      wrap.appendChild(btn);
+    }
+    return wrap;
+  }
+
+  /** Append "(rate / h)" next to each attendee. Returns nothing. */
+  function annotateRows(attendees) {
+    for (const a of attendees) {
+      if (!a.row || !a.row.isConnected) continue;
+      let span = a.row.querySelector("[data-mc-rate]");
+      if (a.rate == null) {
+        if (span) span.remove();
+        continue;
+      }
+      const text = ` (${MC.formatRate(a.rate, cache.settings)} ${L.perHour})`;
+      if (!span) {
+        span = document.createElement("span");
+        span.setAttribute("data-mc-rate", "1");
+        span.style.cssText = "color:#5f6368;white-space:nowrap;";
+        a.row.appendChild(span);
+      }
+      if (span.textContent !== text) span.textContent = text;
+    }
+  }
+
+  function removeInline(root) {
+    (root || document)
+      .querySelectorAll("[data-mc-banner],[data-mc-rate]")
+      .forEach((n) => n.remove());
+  }
+
+  function inlineSignature(data) {
+    return (
+      data.attendees.map((a) => a.email).sort().join(",") + "|" + data.totalText
+    );
+  }
+
+  /** Returns true if injection is holding, false if it's thrashing. */
+  function renderInline(data) {
+    const container = data.container;
+    annotateRows(data.attendees);
+
+    const sig = inlineSignature(data);
+    let banner = container.querySelector("[data-mc-banner]");
+    if (banner && banner.getAttribute("data-mc-sig") === sig) {
+      return true; // up to date
+    }
+    if (banner) banner.remove(); // stale (DOM reused for another event)
+
+    // (Re)insert it, ideally just above the attendee list.
+    banner = buildInlineBanner(data);
+    banner.setAttribute("data-mc-sig", sig);
+    const firstRow = data.attendees.find((a) => a.row && a.row.isConnected);
+    const list = firstRow
+      ? firstRow.row.closest('ul, [role="list"]') || firstRow.row
+      : null;
+    if (list && list.parentElement) {
+      list.parentElement.insertBefore(banner, list);
+    } else {
+      container.insertBefore(banner, container.firstChild);
+    }
+
+    // Track re-insertion rate to detect Google fighting us.
+    const now = Date.now();
+    injectTimes.push(now);
+    injectTimes = injectTimes.filter((t) => now - t < THRASH_WINDOW_MS);
+    return injectTimes.length < THRASH_LIMIT;
+  }
+
   function run() {
     scheduled = false;
     if (!cache.settings.enabled) {
+      removeInline();
       hideCard();
       return;
     }
@@ -469,12 +605,32 @@
 
       const best = candidates[0];
       if (!best) {
+        removeInline();
         hideCard();
         return;
       }
-      anchor = best.container;
-      renderCard(best);
-      positionCard();
+
+      // Use the overlay fallback while inline injection is in cooldown.
+      if (Date.now() < inlineDisabledUntil) {
+        removeInline();
+        anchor = best.container;
+        renderCard(best);
+        positionCard();
+        return;
+      }
+
+      const holding = renderInline(best);
+      if (!holding) {
+        // Google keeps deleting our nodes; back off to the overlay.
+        inlineDisabledUntil = Date.now() + THRASH_COOLDOWN_MS;
+        injectTimes = [];
+        removeInline();
+        anchor = best.container;
+        renderCard(best);
+        positionCard();
+      } else {
+        hideCard();
+      }
     } catch (err) {
       // Never let a parsing hiccup break the page.
       console.debug("[MeetingCost] processing error", err);

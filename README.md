@@ -17,10 +17,13 @@ Rates can be entered manually or pulled automatically from
 
 ## Features
 
-- **Floating cost card** pinned next to the Google Calendar event popup, showing
-  the total cost plus a per‑attendee hourly‑rate breakdown. It's rendered in an
-  isolated Shadow DOM attached to `<html>` so Google's view reconciler can't
-  delete it (the reason an injected inline banner doesn't survive).
+- **Inline cost row** injected natively into the event popup — a
+  `… € coût de la réunion` line plus a `(rate / h)` annotation next to each
+  attendee, matching Google's own styling.
+- **Self-healing** — Google Calendar's view reconciler sometimes strips injected
+  nodes; the extension re-injects automatically, and if Google fights it too
+  hard it falls back to a floating cost card (Shadow DOM, can't be removed) so
+  you always see the cost.
 - **Localized** — English and French (`coût de la réunion`).
 - **"Send an Email Instead" button** — a one‑click nudge that opens a pre‑filled
   email to all attendees. Optionally show it only once a meeting crosses a cost
@@ -78,17 +81,20 @@ currency automatically.
 
 ### A note on Google Calendar's DOM
 
-Google Calendar's markup is obfuscated, changes periodically, and — crucially —
-is managed by a virtual‑DOM reconciler that **deletes any foreign node** inserted
-into it. So the extension never writes into Google's DOM. Instead it:
+Google Calendar's markup is obfuscated, changes periodically, and is managed by
+a virtual‑DOM reconciler that can **delete foreign nodes** inserted into it. The
+extension:
 
 1. Finds attendees by their email attributes (`data-email`, or `data-hovercard-id`
-   in the event editor) and locates the popup by climbing to the nearest ancestor
-   whose text contains a time range (see `TIME_RANGE_RE` in `src/content.js`).
+   in the event editor), skips meeting rooms (`*.calendar.google.com`), and
+   locates the popup by climbing to the nearest ancestor whose text contains a
+   time range (see `TIME_RANGE_RE` in `src/content.js`).
 2. Parses the duration, supporting 12‑hour (`11:00am – 12:00pm`), 24‑hour
    (`16:15 – 16:45`), and French (`16h15 à 16h45`) formats.
-3. Renders its own card in a Shadow DOM attached to `<html>` and pins it next to
-   the popup — outside Google's reconciled subtree, so it sticks.
+3. Injects a native‑looking cost row inline. A `MutationObserver` re‑injects it
+   whenever Google strips it. If Google removes it faster than ~8 times in 2s
+   (thrashing), the extension backs off for 30s and shows a floating Shadow‑DOM
+   card pinned next to the popup instead — which Google can't touch.
 
 If a future Google update breaks detection, the `TIME_RANGE_RE` regex and the
 email selectors are the first things to revisit.
