@@ -11,6 +11,7 @@
  *       enabled: boolean,
  *       currency: string,            // e.g. "$"
  *       currencyPosition: "before" | "after",
+ *       domainWhitelist: string,     // comma/newline-separated allowed email domains
  *       defaultRate: number,         // used for attendees without a known rate (0 = ignore)
  *       emailThreshold: number,      // show "Send an Email Instead" at/above this cost (0 = always)
  *       everhourApiKey: string,
@@ -29,6 +30,7 @@
     enabled: true,
     currency: "$",
     currencyPosition: "before",
+    domainWhitelist: "",
     defaultRate: 0,
     emailThreshold: 0,
     everhourApiKey: "",
@@ -67,6 +69,25 @@
       await chrome.storage.local.set({ rates });
     },
 
+    normalizeDomainList(raw) {
+      return String(raw || "")
+        .split(/[\s,;]+/)
+        .map((domain) => domain.trim().toLowerCase().replace(/^@+/, ""))
+        .filter(Boolean);
+    },
+
+    emailMatchesDomainWhitelist(email, settings) {
+      const domains = this.normalizeDomainList(settings.domainWhitelist);
+      if (domains.length === 0) return true;
+      const normalizedEmail = String(email || "").trim().toLowerCase();
+      const atIndex = normalizedEmail.lastIndexOf("@");
+      if (atIndex === -1) return false;
+      const emailDomain = normalizedEmail.slice(atIndex + 1);
+      return domains.some(
+        (domain) => emailDomain === domain || emailDomain.endsWith(`.${domain}`)
+      );
+    },
+
     /**
      * Resolve an hourly rate for an attendee.
      * Matches by email first, then by (case-insensitive) name, then falls back
@@ -75,6 +96,9 @@
     resolveRate(rates, settings, { email, name }) {
       if (email) {
         const key = email.trim().toLowerCase();
+        if (!this.emailMatchesDomainWhitelist(key, settings)) {
+          return 0;
+        }
         if (rates[key] && typeof rates[key].rate === "number") {
           return rates[key].rate;
         }

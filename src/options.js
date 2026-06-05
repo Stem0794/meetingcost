@@ -8,6 +8,7 @@
     enabled: $("enabled"),
     currency: $("currency"),
     currencyPosition: $("currencyPosition"),
+    domainWhitelist: $("domainWhitelist"),
     defaultRate: $("defaultRate"),
     emailThreshold: $("emailThreshold"),
     everhourApiKey: $("everhourApiKey"),
@@ -164,6 +165,7 @@
     els.enabled.checked = settings.enabled;
     els.currency.value = settings.currency;
     els.currencyPosition.value = settings.currencyPosition;
+    els.domainWhitelist.value = settings.domainWhitelist || "";
     els.defaultRate.value = settings.defaultRate || "";
     els.emailThreshold.value = settings.emailThreshold || "";
     els.everhourApiKey.value = settings.everhourApiKey || "";
@@ -181,6 +183,7 @@
       enabled: els.enabled.checked,
       currency: els.currency.value.trim() || "$",
       currencyPosition: els.currencyPosition.value,
+      domainWhitelist: MC.normalizeDomainList(els.domainWhitelist.value).join(", "),
       defaultRate: parseFloat(els.defaultRate.value) || 0,
       emailThreshold: parseFloat(els.emailThreshold.value) || 0,
       everhourApiKey: els.everhourApiKey.value.trim(),

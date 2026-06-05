@@ -30,6 +30,8 @@ Rates can be entered manually or pulled automatically from
   threshold ("costs too much? send an email instead").
 - **Settings page** to manage rates per colleague (by email), currency, and a
   fallback default rate.
+- **Domain whitelist** — optionally restrict billable attendees to specific
+  email domains; guests outside the whitelist count as `0` per hour.
 - **Everhour sync** — enter your API key and import the whole team's rates
   (choose *cost* or *bill* rate).
 - **Quick toggle** in the toolbar popup to enable/disable the overlay.
@@ -56,6 +58,12 @@ Open the extension's **options** page (right‑click the toolbar icon →
 Use **Add person** to add a row with an email, name, and hourly rate. Matching
 is done by email first, then by name, and finally falls back to the configured
 **Default rate / hour** (set it to `0` to ignore unknown attendees).
+
+### Domain whitelist
+
+Set **Allowed email domains** to one or more company domains (for example
+`enterprise.com`). Any attendee whose email is outside that whitelist is still
+shown, but contributes `0` to the meeting total.
 
 ### Everhour sync
 

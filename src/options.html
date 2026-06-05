@@ -44,6 +44,11 @@
             <small>Used for attendees with no specific rate. Leave 0 to skip them.</small>
           </label>
           <label class="field">
+            <span>Allowed email domains</span>
+            <input type="text" id="domainWhitelist" placeholder="enterprise.com, subsidiary.com" />
+            <small>Attendees outside these domains count as 0 per hour. Leave empty to allow all domains.</small>
+          </label>
+          <label class="field">
             <span>"Send an email instead" from</span>
             <input type="number" id="emailThreshold" min="0" step="1" placeholder="0" />
             <small>Show the email-instead button once a meeting costs at least this much. 0 = always show.</small>
