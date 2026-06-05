@@ -17,13 +17,11 @@ Rates can be entered manually or pulled automatically from
 
 ## Features
 
-- **Inline cost row** injected natively into the event popup — a
-  `… € coût de la réunion` line plus a `(rate / h)` annotation next to each
-  attendee, matching Google's own styling.
-- **Self-healing** — Google Calendar's view reconciler sometimes strips injected
-  nodes; the extension re-injects automatically, and if Google fights it too
-  hard it falls back to a floating cost card (Shadow DOM, can't be removed) so
-  you always see the cost.
+- **Private overlay card** pinned to the Google Calendar event popup, showing
+  the meeting total and attendee rates inside an extension-owned Shadow DOM.
+- **Self-healing** — Google Calendar's DOM is volatile, so the extension pins
+  its own floating card next to the popup instead of relying on Google-owned
+  nodes.
 - **Localized** — English and French (`coût de la réunion`).
 - **"Send an Email Instead" button** — a one‑click nudge that opens a pre‑filled
   email to all attendees. Optionally show it only once a meeting crosses a cost
@@ -99,10 +97,9 @@ extension:
    time range (see `TIME_RANGE_RE` in `src/content.js`).
 2. Parses the duration, supporting 12‑hour (`11:00am – 12:00pm`), 24‑hour
    (`16:15 – 16:45`), and French (`16h15 à 16h45`) formats.
-3. Injects a native‑looking cost row inline. A `MutationObserver` re‑injects it
-   whenever Google strips it. If Google removes it faster than ~8 times in 2s
-   (thrashing), the extension backs off for 30s and shows a floating Shadow‑DOM
-   card pinned next to the popup instead — which Google can't touch.
+3. Renders the meeting cost in a floating Shadow‑DOM card pinned next to the
+   popup, so Google Calendar can’t strip the UI and page scripts can’t read the
+   card contents directly.
 
 If a future Google update breaks detection, the `TIME_RANGE_RE` regex and the
 email selectors are the first things to revisit.
@@ -110,5 +107,6 @@ email selectors are the first things to revisit.
 ## Privacy
 
 The extension requests access only to `calendar.google.com` (to display costs)
-and `api.everhour.com` (to sync rates when you ask it to). Your rates and API
-key are stored locally in your browser and are never sent anywhere else.
+and `api.everhour.com` (to sync rates when you ask it to). Your rates are
+rendered inside an extension-owned Shadow DOM, and the Everhour API key is kept
+out of content-script-visible storage.

@@ -6,6 +6,8 @@
  * it via chrome.runtime.sendMessage.
  */
 
+importScripts("storage.js");
+
 const EVERHOUR_USERS_URL = "https://api.everhour.com/team/users";
 
 // Everhour list endpoints paginate with a default page size of 50. We request
@@ -90,8 +92,32 @@ async function fetchEverhourUsers(apiKey) {
   return Array.from(byId.values());
 }
 
+async function configureStorageAccess() {
+  if (chrome.storage.local && chrome.storage.local.setAccessLevel) {
+    await chrome.storage.local.setAccessLevel({ accessLevel: "TRUSTED_CONTEXTS" });
+  }
+  if (chrome.storage.session && chrome.storage.session.setAccessLevel) {
+    await chrome.storage.session.setAccessLevel({
+      accessLevel: "TRUSTED_AND_UNTRUSTED_CONTEXTS",
+    });
+  }
+}
+
+async function publishPublicState() {
+  if (!chrome.storage.session) return;
+  const data = await MC.getAll();
+  await chrome.storage.session.set(MC.toPublicState(data));
+}
+
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   if (!message) return false;
+
+  if (message.type === "state:get") {
+    MC.getPublicData()
+      .then((data) => sendResponse({ ok: true, data }))
+      .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
 
   if (message.type === "everhour:users") {
     fetchEverhourUsers(message.apiKey)
@@ -101,7 +127,9 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
   }
 
   if (message.type === "gmail:compose") {
-    openGmailCompose(message.url).then(() => sendResponse({ ok: true }));
+    openGmailCompose(message.url)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
     return true;
   }
 
@@ -114,10 +142,28 @@ chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
  * tab — that would replace the inbox with a full-screen compose page.
  */
 async function openGmailCompose(composeUrl) {
+  const url = new URL(composeUrl);
+  if (url.origin !== "https://mail.google.com" || url.pathname !== "/mail/") {
+    throw new Error("Invalid Gmail compose URL.");
+  }
   await chrome.windows.create({
-    url: composeUrl,
+    url: url.toString(),
     type: "popup",
     width: 680,
     height: 700,
   });
 }
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== "local") return;
+  if (!changes.settings && !changes.rates) return;
+  publishPublicState().catch((err) => {
+    console.debug("[MeetingCost] failed to publish public state", err);
+  });
+});
+
+configureStorageAccess()
+  .then(publishPublicState)
+  .catch((err) => {
+    console.debug("[MeetingCost] storage hardening failed", err);
+  });

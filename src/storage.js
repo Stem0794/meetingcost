@@ -38,8 +38,20 @@
     lastSync: null,
   };
 
+  const PUBLIC_SETTINGS_KEYS = [
+    "enabled",
+    "currency",
+    "currencyPosition",
+    "domainWhitelist",
+    "defaultRate",
+    "emailThreshold",
+    "everhourRateType",
+    "lastSync",
+  ];
+
   const MC = {
     DEFAULT_SETTINGS,
+    PUBLIC_SETTINGS_KEYS,
 
     /** Read the whole store, merged with defaults. */
     async getAll() {
@@ -67,6 +79,41 @@
 
     async saveRates(rates) {
       await chrome.storage.local.set({ rates });
+    },
+
+    sanitizeSettings(settings) {
+      const merged = Object.assign({}, DEFAULT_SETTINGS, settings || {});
+      const publicSettings = {};
+      for (const key of PUBLIC_SETTINGS_KEYS) {
+        publicSettings[key] = merged[key];
+      }
+      return publicSettings;
+    },
+
+    toPublicState(data) {
+      const safeData = data || {};
+      return {
+        publicSettings: this.sanitizeSettings(safeData.settings),
+        publicRates: safeData.rates || {},
+      };
+    },
+
+    async getPublicData() {
+      if (chrome.storage.session) {
+        const data = await chrome.storage.session.get(["publicSettings", "publicRates"]);
+        if (data.publicSettings || data.publicRates) {
+          return {
+            settings: Object.assign({}, DEFAULT_SETTINGS, data.publicSettings || {}),
+            rates: data.publicRates || {},
+          };
+        }
+      }
+
+      const data = await this.getAll();
+      return {
+        settings: this.sanitizeSettings(data.settings),
+        rates: data.rates,
+      };
     },
 
     normalizeDomainList(raw) {

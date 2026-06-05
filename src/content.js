@@ -290,7 +290,7 @@
     host.id = "mc-cost-host";
     host.style.cssText =
       "position:fixed;top:0;left:0;z-index:2147483647;display:none;";
-    const shadow = host.attachShadow({ mode: "open" });
+    const shadow = host.attachShadow({ mode: "closed" });
     const style = document.createElement("style");
     style.textContent = CARD_STYLES;
     card = document.createElement("div");
@@ -452,13 +452,11 @@
   }
 
   /* ------------------------------------------------------------------ */
-  /* Inline injection (primary)                                          */
+  /* Legacy inline cleanup                                               */
   /*                                                                     */
-  /* We insert a native-looking cost row + per-attendee annotations      */
-  /* directly into Google's popup. Google's reconciler may strip them on */
-  /* a re-render; our MutationObserver simply re-injects (no stale guard).*/
-  /* If Google removes them faster than we can keep up (thrash), we back  */
-  /* off and fall back to the floating overlay card for a while.         */
+  /* Older versions injected rates into the page DOM. We now keep all    */
+  /* sensitive values inside an extension-owned closed shadow tree, but  */
+  /* still remove stale inline nodes after upgrades.                     */
   /* ------------------------------------------------------------------ */
 
   const THRASH_WINDOW_MS = 2000;
@@ -648,29 +646,10 @@
         hideCard();
         return;
       }
-
-      // Use the overlay fallback while inline injection is in cooldown.
-      if (Date.now() < inlineDisabledUntil) {
-        removeInline();
-        anchor = best.container;
-        renderCard(best);
-        positionCard();
-        return;
-      }
-
-      const holding = renderInline(best);
-      if (!holding) {
-        // Google keeps deleting our nodes; back off to the overlay.
-        inlineDisabledUntil = Date.now() + THRASH_COOLDOWN_MS;
-        injectTimes = [];
-        stopWatchingBanner();
-        removeInline();
-        anchor = best.container;
-        renderCard(best);
-        positionCard();
-      } else {
-        hideCard();
-      }
+      removeInline();
+      anchor = best.container;
+      renderCard(best);
+      positionCard();
     } catch (err) {
       // Never let a parsing hiccup break the page.
       console.debug("[MeetingCost] processing error", err);
@@ -685,7 +664,11 @@
   }
 
   async function refreshCache() {
-    const data = await MC.getAll();
+    const resp = await chrome.runtime.sendMessage({ type: "state:get" });
+    if (!resp || !resp.ok || !resp.data) {
+      throw new Error((resp && resp.error) || "Unable to read extension state.");
+    }
+    const data = resp.data;
     cache = {
       settings: data.settings,
       rates: data.rates,
@@ -704,8 +687,8 @@
     window.addEventListener("resize", positionCard);
 
     chrome.storage.onChanged.addListener(async (changes, area) => {
-      if (area !== "local") return;
-      if (!changes.settings && !changes.rates) return;
+      if (area !== "session") return;
+      if (!changes.publicSettings && !changes.publicRates) return;
       await refreshCache();
       schedule();
     });
