@@ -467,6 +467,42 @@
   let injectTimes = [];
   let inlineDisabledUntil = 0;
 
+  // Dedicated observer that watches only the banner's immediate parent so we
+  // can re-inject in ~20 ms instead of 150 ms when Google's reconciler removes
+  // just our node. This makes the flicker imperceptible rather than visible.
+  let bannerObserver = null;
+  let trackedBanner = null;
+  let quickScheduled = false;
+
+  function scheduleQuick() {
+    if (quickScheduled || scheduled) return;
+    quickScheduled = true;
+    setTimeout(() => { quickScheduled = false; run(); }, 20);
+  }
+
+  function watchBanner(banner) {
+    if (bannerObserver) bannerObserver.disconnect();
+    trackedBanner = banner;
+    const parent = banner.parentElement;
+    if (!parent) return;
+    bannerObserver = new MutationObserver((mutations) => {
+      for (const m of mutations) {
+        for (const node of m.removedNodes) {
+          if (node === trackedBanner) {
+            scheduleQuick();
+            return;
+          }
+        }
+      }
+    });
+    bannerObserver.observe(parent, { childList: true });
+  }
+
+  function stopWatchingBanner() {
+    if (bannerObserver) { bannerObserver.disconnect(); bannerObserver = null; }
+    trackedBanner = null;
+  }
+
   function inlineBannerLabel(data) {
     return data.knownCount === 0
       ? L.noRates
@@ -543,6 +579,7 @@
   }
 
   function removeInline(root) {
+    stopWatchingBanner();
     (root || document)
       .querySelectorAll("[data-mc-banner],[data-mc-rate]")
       .forEach((n) => n.remove());
@@ -578,6 +615,8 @@
     } else {
       container.insertBefore(banner, container.firstChild);
     }
+
+    watchBanner(banner);
 
     // Track re-insertion rate to detect Google fighting us.
     const now = Date.now();
@@ -624,6 +663,7 @@
         // Google keeps deleting our nodes; back off to the overlay.
         inlineDisabledUntil = Date.now() + THRASH_COOLDOWN_MS;
         injectTimes = [];
+        stopWatchingBanner();
         removeInline();
         anchor = best.container;
         renderCard(best);
