@@ -279,6 +279,7 @@
       display: inline-block; margin-top: 12px; padding: 7px 14px;
       background: #1a73e8; color: #fff; font-size: 13px; font-weight: 600;
       border-radius: 8px; text-decoration: none; cursor: pointer;
+      border: none; font-family: inherit;
     }
     .email-btn:hover { background: #1765cc; }
   `;
@@ -305,11 +306,12 @@
     if (host) host.style.display = "none";
   }
 
-  function mailtoHref(attendees, title, totalText) {
-    const recipients = attendees.map((a) => a.email).join(",");
+  function gmailComposeUrl(attendees, title, totalText) {
+    const to = attendees.map((a) => a.email).join(",");
     return (
-      `mailto:${encodeURIComponent(recipients)}` +
-      `?subject=${encodeURIComponent(L.emailSubject(title))}` +
+      "https://mail.google.com/mail/?view=cm&fs=1" +
+      `&to=${encodeURIComponent(to)}` +
+      `&su=${encodeURIComponent(L.emailSubject(title))}` +
       `&body=${encodeURIComponent(L.emailBody(title, totalText))}`
     );
   }
@@ -374,12 +376,15 @@
     // "Costs too much? Send an email instead."
     const threshold = cache.settings.emailThreshold || 0;
     if (data.knownCount > 0 && data.total >= threshold) {
-      const btn = document.createElement("a");
+      const composeUrl = gmailComposeUrl(data.attendees, data.title, data.totalText);
+      const btn = document.createElement("button");
       btn.className = "email-btn";
-      btn.href = mailtoHref(data.attendees, data.title, data.totalText);
-      btn.target = "_blank";
-      btn.rel = "noopener";
+      btn.type = "button";
       btn.textContent = L.email;
+      btn.addEventListener("click", () => {
+        // Ask the background worker to focus an existing Gmail tab or open one.
+        chrome.runtime.sendMessage({ type: "gmail:compose", url: composeUrl });
+      });
       card.appendChild(btn);
     }
 

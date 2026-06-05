@@ -3,10 +3,11 @@
   "name": "Meeting Cost for Google Calendar",
   "version": "1.0.0",
   "description": "Shows the cost of a meeting on Google Calendar based on attendees' hourly rates. Set rates manually or sync them from Everhour.",
-  "permissions": ["storage"],
+  "permissions": ["storage", "tabs"],
   "host_permissions": [
     "https://calendar.google.com/*",
-    "https://api.everhour.com/*"
+    "https://api.everhour.com/*",
+    "https://mail.google.com/*"
   ],
   "background": {
     "service_worker": "src/background.js"

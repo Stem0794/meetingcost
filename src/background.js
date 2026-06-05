@@ -91,12 +91,35 @@ async function fetchEverhourUsers(apiKey) {
 }
 
 chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
-  if (!message || message.type !== "everhour:users") return false;
+  if (!message) return false;
 
-  fetchEverhourUsers(message.apiKey)
-    .then((users) => sendResponse({ ok: true, users }))
-    .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
+  if (message.type === "everhour:users") {
+    fetchEverhourUsers(message.apiKey)
+      .then((users) => sendResponse({ ok: true, users }))
+      .catch((err) => sendResponse({ ok: false, error: String(err.message || err) }));
+    return true;
+  }
 
-  // Return true to keep the message channel open for the async response.
-  return true;
+  if (message.type === "gmail:compose") {
+    openGmailCompose(message.url).then(() => sendResponse({ ok: true }));
+    return true;
+  }
+
+  return false;
 });
+
+/**
+ * Open a Gmail compose window. If a Gmail tab already exists in the current
+ * window, focus it and navigate it to the compose URL. Otherwise open a new tab.
+ */
+async function openGmailCompose(composeUrl) {
+  const tabs = await chrome.tabs.query({ url: "https://mail.google.com/*" });
+  if (tabs.length > 0) {
+    // Prefer a tab in the same window; fall back to any Gmail tab.
+    const senderTab = tabs[0];
+    await chrome.tabs.update(senderTab.id, { active: true, url: composeUrl });
+    await chrome.windows.update(senderTab.windowId, { focused: true });
+  } else {
+    await chrome.tabs.create({ url: composeUrl });
+  }
+}
